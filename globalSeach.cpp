@@ -10,8 +10,8 @@ using namespace std;
 
 void LerGrafo(string grafo, map<int,int> &demanda, vector<tuple<int, int , int>> &arestas, vector<int> &locais);
 vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais);
-void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
 bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade);
+void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
 int CalcularCusto(vector<int> rota);
 
 int main(){
@@ -22,35 +22,13 @@ int main(){
     vector<int> locais;
     LerGrafo(grafo, demanda, arestas,locais);
 
-    // for (auto it = demanda.begin(); it != demanda.end(); it++){
-    //     cout << "Local: " << it->first << ", Demanda: " << it->second << endl;
-    // }
-
-    // for (auto& aresta : arestas){
-    //     cout << "Nó 1: " << get<0>(aresta) << ", Nó 2: " << get<1>(aresta) << ", Custo: " << get<2>(aresta) << endl;
-    // }
     cout << "Local: "  << locais.size() << endl;
     vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais);
     cout << "Rotas: " << rotas.size() << endl;
-    // for (auto& rota : rotas){
-    //     for (auto& local : rota){
-    //         cout << local << " ";
-    //     }
-    //     cout << endl;
-    // }
+
     return 0;
 
 }
-
-
-
-
-
-
-
-
-
-
 
 void LerGrafo(string grafo, map<int,int> &demanda, vector<tuple<int, int , int>> &arestas, vector<int> &locais){
     ifstream arquivo;
@@ -85,16 +63,6 @@ void LerGrafo(string grafo, map<int,int> &demanda, vector<tuple<int, int , int>>
     arquivo.close();
 }
 
-// Função GerarTodasAsCombinações(Locais):
-//     // Gera todas as permutações possíveis de locais e agrupa em rotas válidas conforme a capacidade
-//     // Esta função é bastante complexa,
-//     // pois precisa considerar todas as subdivisões possíveis dos locais em rotas que atendam à capacidade do veículo
-//     // Retorna uma lista de combinações válidas
-//     Retornar combinações
-
-
-
-
 // Função para gerar todas as combinações possíveis
 vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais) {
     vector<vector<int>> rotas;
@@ -111,3 +79,10 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais) {
     return rotas;
 }
 
+bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade){
+    int demanda_total = 0;
+    for (auto& local : rota){
+        demanda_total += demanda[local];
+    }
+    return demanda_total <= capacidade;
+}
