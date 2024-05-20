@@ -9,13 +9,14 @@
 using namespace std;
 
 void LerGrafo(string grafo, map<int,int> &demanda, vector<tuple<int, int , int>> &arestas, vector<int> &locais);
-vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais);
+vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,int> demanda, int capacidade);
 bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade);
 void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
 int CalcularCusto(vector<int> rota);
 
 int main(){
     string grafo = "grafo.txt";
+    int capacidade = 10;
     map<int,int> demanda;
     vector<tuple<int, int , int>> arestas;
     // Realiza a leitura do grafo
@@ -23,8 +24,14 @@ int main(){
     LerGrafo(grafo, demanda, arestas,locais);
 
     cout << "Local: "  << locais.size() << endl;
-    vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais);
+    vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais, demanda, capacidade);
     cout << "Rotas: " << rotas.size() << endl;
+    // for (auto rota : rotas){
+    //     for (auto local : rota){
+    //         cout << local << " ";
+    //     }
+    //     cout << endl;
+    // }
 
     return 0;
 
@@ -37,7 +44,8 @@ void LerGrafo(string grafo, map<int,int> &demanda, vector<tuple<int, int , int>>
         int N; // número de locais a serem visitados
         arquivo >> N;
         N -= 1;
-        for (int i = 1; i < N; i++){
+        for (int i = 1; i <= N; i++){
+            cout << i << endl;
             locais.push_back(i);
         }
         // Populando a lista de demandas dos locais
@@ -63,8 +71,17 @@ void LerGrafo(string grafo, map<int,int> &demanda, vector<tuple<int, int , int>>
     arquivo.close();
 }
 
+bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade){
+    int demanda_total = 0;
+    for (auto& local : rota){
+        demanda_total += demanda[local];
+    }
+    return demanda_total <= capacidade;
+}
+
+
 // Função para gerar todas as combinações possíveis
-vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais) {
+vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,int> demanda, int capacidade) {
     vector<vector<int>> rotas;
     int n = locais.size();
     for (int i = 1; i < (1 << n); i++) {
@@ -74,15 +91,9 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais) {
                 rota.push_back(locais[j]);
             }
         }
-        rotas.push_back(rota);
+        if (VerificarCapacidade(rota, demanda, capacidade)){
+            rotas.push_back(rota);
+        }
     }
     return rotas;
-}
-
-bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade){
-    int demanda_total = 0;
-    for (auto& local : rota){
-        demanda_total += demanda[local];
-    }
-    return demanda_total <= capacidade;
 }
