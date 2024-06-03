@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <climits>
 #include <set>
+#include <chrono>
+#include <stack>
+#include <omp.h> 
+
 
 using namespace std;
 
@@ -39,24 +43,6 @@ public:
 
         return custo;
     }
-
-    int calcularCustoRotaIsolado(const vector<int>& rota) {
-        vector<int> rota_copia = rota;
-        int custo = 0;
-        for (int i = 0; i < rota_copia.size() - 1; i++) {
-            int origem = rota_copia[i];
-            int destino = rota_copia[i + 1];
-            for (const auto& aresta : adjacencias[origem]) {
-                if (aresta.first == destino) {
-                    custo += aresta.second;
-                    break;
-                }
-            }
-        }
-
-        return custo;
-    }
-
 
     // Função para verificar se uma rota é válida
     bool verificarRotaValida(const vector<int>& rota) {
@@ -92,11 +78,16 @@ bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade)
 void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
 int CalcularCusto(vector<int> rota);
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo);
-vector<int> insertMaisProximo( vector<int>& rotas , Grafo& grafo);
+
 
 int main(int argc, char* argv[]){
+    auto start = std::chrono::high_resolution_clock::now();
+    if (argc < 2) {
+        cout << "Usage: " << argv[0] << " <file>" << endl;
+        return 1;
+    }
     string file = argv[1];
-    int capacidade = 15;
+    int capacidade = 10;
     Grafo grafo;    
     map<int,int> demanda;
     vector<tuple<int, int , int>> arestas;
@@ -107,25 +98,26 @@ int main(int argc, char* argv[]){
     cout << "Local: "  << locais.size() << endl;
     vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais, demanda, capacidade, grafo);
     cout << "Rotas: " << rotas.size() << endl;
+
     int melhorCusto = INT_MAX;
 
-    // for (const auto& rota : rotas) {
-    //     cout << "isso é uma rota : " << endl;
-    //     for (const auto& local : rota) {
-    //         cout << local << " ";
-    //     }
-    //     cout << endl;
-    // }
-
-    vector<int> melhorRota;
-    melhorRota = insertMaisProximo(locais, grafo);
+    vector<vector<int>> combinacaoAtual;
+    vector<vector<int>> melhorCombinacao;
+    encontrarMelhorCombinacao(rotas, combinacaoAtual, 0, locais, melhorCusto, melhorCombinacao, grafo);
         // Imprimir o resultado
-    cout << "Melhor Rotas:" << endl;
-    for (const auto& rota : melhorRota) {
-        cout  << rota << " ";
+    cout << "Melhor combinação de rotas:" << endl;
+    for (const auto& rota : melhorCombinacao) {
+        cout << "{ ";
+        for (int cidade : rota) {
+            cout << cidade << " ";
+        }
+        cout << "} com custo: " << grafo.calcularCustoRota(rota) << endl;
     }
-    cout << " com custo: " << grafo.calcularCustoRota(melhorRota) << endl;
+    cout << "Menor custo: " << melhorCusto << endl;
 
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Tempo de execução: " << duration.count() << " segundos" << std::endl;
     return 0;
 }
 
@@ -150,7 +142,7 @@ void LerGrafo(string file, map<int,int> &demanda, vector<tuple<int, int , int>> 
         int K; // Declare a variável K antes de utilizá-la
 
         arquivo >> K; // Leia o número de arestas do arquivo
-
+        
         for (int i = 0; i < K; i++) {
             int id_no1, id_no2, custo;
             arquivo >> id_no1;
@@ -175,6 +167,7 @@ bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade)
 vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,int> demanda, int capacidade,Grafo &grafo) {
     vector<vector<int>> rotas;
     int n = locais.size();
+    #pragma omp parallel for // dividir o loop entre as threads da equipe
     for (int i = 1; i < (1 << n); i++) {
         vector<int> rota;
         for (int j = 0; j < n; j++) {
@@ -183,9 +176,8 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,in
             }
         }
         if (VerificarCapacidade(rota, demanda, capacidade)){
-            
-            // rota.push_back(0);
             if (grafo.verificarRotaValida(rota)){
+                #pragma omp critical // garantir que apenas uma thread por vez adicione uma rota à lista
                 rotas.push_back(rota);
             }
         }
@@ -193,49 +185,70 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,in
     return rotas;
 }
 
-// Função para gerar uma rota usando a  de inserção mais próxima
-vector<int> insertMaisProximo( vector<int>& rotas , Grafo& grafo) {
-    vector<int> rotaHeuristica;
-    rotaHeuristica.push_back(0);
-    rotas.push_back(0);
 
-    int teste = grafo.calcularCustoRotaIsolado({0,1});
-    cout << "Custo do teste: " << teste << endl;
-
-    int cidadeAtual = rotaHeuristica.back();
-    while (rotas.size() > 1) {
-        cout << "Cidade Atual: " << cidadeAtual << endl;
-        int cidadeMaisProxima = -1;
-        int menorCusto = INT_MAX;
-
-        for (int local : rotas) {
-            cout << "Local atual " << local << endl;
-            vector<int> rotaAtual = {cidadeAtual, local};
-            int custo = grafo.calcularCustoRotaIsolado(rotaAtual);
-            cout << "Para a rotas: " << cidadeAtual << " -> " << local << " o custo é: " << custo << endl;
-            if (custo == 0){
-                custo = INT_MAX;
-            }
-            if (custo < menorCusto) {
-                menorCusto = custo;
-                cidadeMaisProxima = local;
-                
-            }
-        }
-        if (cidadeMaisProxima == -1){
-
-        }
-        cidadeAtual = cidadeMaisProxima;
-        rotaHeuristica.push_back(cidadeMaisProxima);
-        if (cidadeMaisProxima != 0) {
-            rotas.erase(find(rotas.begin(), rotas.end(), cidadeMaisProxima));
+// Função para verificar se uma combinação de rotas cobre todas as cidades
+bool cobreTodasCidades(const vector<vector<int>>& combinacao, const vector<int>& locais) {
+    set<int> cidadesCobertas;
+    for (const auto& rota : combinacao) {
+        for (int cidade : rota) {
+            cidadesCobertas.insert(cidade);
         }
     }
-
-    rotaHeuristica.push_back(0);
-
-    return rotaHeuristica;
-
-    // return rota;
+    return cidadesCobertas.size() == locais.size();
 }
 
+void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index,
+                               const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo) {
+    stack<pair<int, int>> pilha;
+    pilha.push(make_pair(index, 0));
+
+    #pragma omp parallel // cria um grupo de threads paralelas
+    {
+        vector<vector<int>> combinacaoThread; // cada thread terá sua própria cópia da combinação atual
+        int melhorCustoThread = INT_MAX; // cada thread terá sua própria cópia do melhor custo
+
+        #pragma omp single // apenas uma thread executa esta parte do código
+        {
+            while (!pilha.empty()) {
+                pair<int, int> topo = pilha.top();
+                pilha.pop();
+
+                int i = topo.first;
+                int opcao = topo.second;
+
+                if (opcao == 0) {
+                    if (cobreTodasCidades(combinacaoAtual, locais)) {
+                        int custoTotal = 0;
+                        for (const auto& rota : combinacaoAtual) {
+                            custoTotal += grafo.calcularCustoRota(rota);
+                        }
+                        if (custoTotal < melhorCusto) {
+                            melhorCusto = custoTotal;
+                            melhorCombinacao = combinacaoAtual;
+                        }
+                    }
+                    continue;
+                }
+
+                if (opcao == 0 && i < rotas.size()) {
+                    combinacaoThread = combinacaoAtual; // faz uma cópia da combinação atual para a thread atual
+                    combinacaoThread.push_back(rotas[i]);
+                    #pragma omp task // cria uma tarefa para ser executada por uma thread da equipe
+                    encontrarMelhorCombinacaoThread(rotas, combinacaoThread, i, locais, melhorCustoThread, grafo, &combinacaoAtual, &melhorCombinacao);
+                    pilha.push(make_pair(i, 1));
+                } else if (opcao == 1) {
+                    combinacaoAtual.pop_back();
+                    pilha.push(make_pair(i + 1, 0));
+                }
+            }
+        }
+
+        #pragma omp critical // apenas uma thread por vez executa esta parte do código
+        {
+            if (melhorCustoThread < melhorCusto) {
+                melhorCusto = melhorCustoThread;
+                melhorCombinacao = combinacaoThread;
+            }
+        }
+    }
+}

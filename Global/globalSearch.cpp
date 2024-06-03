@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <climits>
 #include <set>
+#include <chrono>
+#include <stack>
+#include <iomanip> 
+
 
 using namespace std;
 
@@ -74,11 +78,16 @@ bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade)
 void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
 int CalcularCusto(vector<int> rota);
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo);
- 
 
-int main(){
-    string file = "grafo.txt";
-    int capacidade = 15;
+
+int main(int argc, char* argv[]){
+    auto start = std::chrono::high_resolution_clock::now();
+    if (argc < 2) {
+        cout << "Usage: " << argv[0] << " <file>" << endl;
+        return 1;
+    }
+    string file = argv[1];
+    int capacidade = 10;
     Grafo grafo;    
     map<int,int> demanda;
     vector<tuple<int, int , int>> arestas;
@@ -89,13 +98,7 @@ int main(){
     cout << "Local: "  << locais.size() << endl;
     vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais, demanda, capacidade, grafo);
     cout << "Rotas: " << rotas.size() << endl;
-    // for (auto rota : rotas){
-    //     for (auto local : rota){
-    //         cout << local << " ";
-    //     }
-    //     cout << "com custo: " << grafo.calcularCustoRota(rota);
-    //     cout << endl;
-    // }
+
     int melhorCusto = INT_MAX;
 
     vector<vector<int>> combinacaoAtual;
@@ -111,6 +114,18 @@ int main(){
         cout << "} com custo: " << grafo.calcularCustoRota(rota) << endl;
     }
     cout << "Menor custo: " << melhorCusto << endl;
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Tempo de execução: " << duration.count() << " segundos" << std::endl;
+    // Escrever o tempo de execução em um arquivo
+    std::ofstream outputFile("tempo_execucao.txt");
+    if (outputFile.is_open()) {
+        outputFile << "Tempo de execução: " << std::fixed << setprecision(3) << duration.count() << " segundos" << std::endl;
+        outputFile.close();
+    } else {
+        std::cout << "Erro ao abrir o arquivo de saída" << std::endl;
+    }
     return 0;
 }
 
@@ -168,8 +183,6 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,in
             }
         }
         if (VerificarCapacidade(rota, demanda, capacidade)){
-            
-            // rota.push_back(0);
             if (grafo.verificarRotaValida(rota)){
                 rotas.push_back(rota);
             }
@@ -190,30 +203,40 @@ bool cobreTodasCidades(const vector<vector<int>>& combinacao, const vector<int>&
     return cidadesCobertas.size() == locais.size();
 }
 
-// Função recursiva para gerar todas as combinações possíveis de rotas
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, 
                                const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo) {
-    if (cobreTodasCidades(combinacaoAtual, locais)) {
-        int custoTotal = 0;
-        for (const auto& rota : combinacaoAtual) {
-            custoTotal += grafo.calcularCustoRota(rota);
+    stack<pair<int, int>> pilha;
+    pilha.push(make_pair(index, 0));
+
+    while (!pilha.empty()) {
+        pair<int, int> topo = pilha.top();
+        pilha.pop();
+
+        int i = topo.first;
+        int opcao = topo.second;
+
+        if (opcao == 0) {
+            if (cobreTodasCidades(combinacaoAtual, locais)) {
+                int custoTotal = 0;
+                for (const auto& rota : combinacaoAtual) {
+                    custoTotal += grafo.calcularCustoRota(rota);
+                }
+                if (custoTotal < melhorCusto) {
+                    melhorCusto = custoTotal;
+                    melhorCombinacao = combinacaoAtual;
+                }
+                continue;
+            }
         }
-        if (custoTotal < melhorCusto) {
-            melhorCusto = custoTotal;
-            melhorCombinacao = combinacaoAtual;
+
+        if (opcao == 0 && i < rotas.size()) {
+            combinacaoAtual.push_back(rotas[i]);
+            pilha.push(make_pair(i, 1));
+            pilha.push(make_pair(i + 1, 0));
+        } else if (opcao == 1) {
+            combinacaoAtual.pop_back();
+            pilha.push(make_pair(i + 1, 0));
         }
-        return;
     }
-
-    if (index >= rotas.size()) {
-        return;
-    }
-
-    // Incluir a rota atual na combinação
-    combinacaoAtual.push_back(rotas[index]);
-    encontrarMelhorCombinacao(rotas, combinacaoAtual, index + 1, locais, melhorCusto, melhorCombinacao, grafo);
-
-    // Excluir a rota atual da combinação
-    combinacaoAtual.pop_back();
-    encontrarMelhorCombinacao(rotas, combinacaoAtual, index + 1, locais, melhorCusto, melhorCombinacao, grafo);
 }
+

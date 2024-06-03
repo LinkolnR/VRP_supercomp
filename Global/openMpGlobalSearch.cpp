@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <climits>
 #include <set>
+#include <chrono>
+#include <stack>
+#include <unordered_map>
+#include <omp.h>
 
 using namespace std;
 
@@ -39,24 +43,6 @@ public:
 
         return custo;
     }
-
-    int calcularCustoRotaIsolado(const vector<int>& rota) {
-        vector<int> rota_copia = rota;
-        int custo = 0;
-        for (int i = 0; i < rota_copia.size() - 1; i++) {
-            int origem = rota_copia[i];
-            int destino = rota_copia[i + 1];
-            for (const auto& aresta : adjacencias[origem]) {
-                if (aresta.first == destino) {
-                    custo += aresta.second;
-                    break;
-                }
-            }
-        }
-
-        return custo;
-    }
-
 
     // Função para verificar se uma rota é válida
     bool verificarRotaValida(const vector<int>& rota) {
@@ -92,11 +78,16 @@ bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade)
 void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
 int CalcularCusto(vector<int> rota);
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo);
-vector<int> insertMaisProximo( vector<int>& rotas , Grafo& grafo);
+
 
 int main(int argc, char* argv[]){
+    auto start = std::chrono::high_resolution_clock::now();
+    if (argc < 2) {
+        cout << "Usage: " << argv[0] << " <file>" << endl;
+        return 1;
+    }
     string file = argv[1];
-    int capacidade = 15;
+    int capacidade = 10;
     Grafo grafo;    
     map<int,int> demanda;
     vector<tuple<int, int , int>> arestas;
@@ -107,25 +98,47 @@ int main(int argc, char* argv[]){
     cout << "Local: "  << locais.size() << endl;
     vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais, demanda, capacidade, grafo);
     cout << "Rotas: " << rotas.size() << endl;
+
     int melhorCusto = INT_MAX;
 
-    // for (const auto& rota : rotas) {
-    //     cout << "isso é uma rota : " << endl;
-    //     for (const auto& local : rota) {
-    //         cout << local << " ";
-    //     }
-    //     cout << endl;
-    // }
+    vector<vector<int>> combinacaoAtual;
+    vector<vector<int>> melhorCombinacao;
 
-    vector<int> melhorRota;
-    melhorRota = insertMaisProximo(locais, grafo);
-        // Imprimir o resultado
-    cout << "Melhor Rotas:" << endl;
-    for (const auto& rota : melhorRota) {
-        cout  << rota << " ";
+    // Paralelizando a busca pela melhor combinação
+    #pragma omp parallel
+    {
+        vector<vector<int>> melhorCombinacaoLocal;
+        int melhorCustoLocal = INT_MAX;
+
+        #pragma omp for schedule(dynamic)
+        for (int i = 0; i < rotas.size(); i++) {
+            vector<vector<int>> combinacaoAtualLocal;
+            encontrarMelhorCombinacao(rotas, combinacaoAtualLocal, i, locais, melhorCustoLocal, melhorCombinacaoLocal, grafo);
+        }
+
+        #pragma omp critical
+        {
+            if (melhorCustoLocal < melhorCusto) {
+                melhorCusto = melhorCustoLocal;
+                melhorCombinacao = melhorCombinacaoLocal;
+            }
+        }
     }
-    cout << " com custo: " << grafo.calcularCustoRota(melhorRota) << endl;
 
+    // Imprimir o resultado
+    cout << "Melhor combinação de rotas:" << endl;
+    for (const auto& rota : melhorCombinacao) {
+        cout << "{ ";
+        for (int cidade : rota) {
+            cout << cidade << " ";
+        }
+        cout << "} com custo: " << grafo.calcularCustoRota(rota) << endl;
+    }
+    cout << "Menor custo: " << melhorCusto << endl;
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Tempo de execução: " << duration.count() << " segundos" << std::endl;
     return 0;
 }
 
@@ -183,8 +196,6 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,in
             }
         }
         if (VerificarCapacidade(rota, demanda, capacidade)){
-            
-            // rota.push_back(0);
             if (grafo.verificarRotaValida(rota)){
                 rotas.push_back(rota);
             }
@@ -193,49 +204,51 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,in
     return rotas;
 }
 
-// Função para gerar uma rota usando a  de inserção mais próxima
-vector<int> insertMaisProximo( vector<int>& rotas , Grafo& grafo) {
-    vector<int> rotaHeuristica;
-    rotaHeuristica.push_back(0);
-    rotas.push_back(0);
 
-    int teste = grafo.calcularCustoRotaIsolado({0,1});
-    cout << "Custo do teste: " << teste << endl;
-
-    int cidadeAtual = rotaHeuristica.back();
-    while (rotas.size() > 1) {
-        cout << "Cidade Atual: " << cidadeAtual << endl;
-        int cidadeMaisProxima = -1;
-        int menorCusto = INT_MAX;
-
-        for (int local : rotas) {
-            cout << "Local atual " << local << endl;
-            vector<int> rotaAtual = {cidadeAtual, local};
-            int custo = grafo.calcularCustoRotaIsolado(rotaAtual);
-            cout << "Para a rotas: " << cidadeAtual << " -> " << local << " o custo é: " << custo << endl;
-            if (custo == 0){
-                custo = INT_MAX;
-            }
-            if (custo < menorCusto) {
-                menorCusto = custo;
-                cidadeMaisProxima = local;
-                
-            }
-        }
-        if (cidadeMaisProxima == -1){
-
-        }
-        cidadeAtual = cidadeMaisProxima;
-        rotaHeuristica.push_back(cidadeMaisProxima);
-        if (cidadeMaisProxima != 0) {
-            rotas.erase(find(rotas.begin(), rotas.end(), cidadeMaisProxima));
+// Função para verificar se uma combinação de rotas cobre todas as cidades
+bool cobreTodasCidades(const vector<vector<int>>& combinacao, const vector<int>& locais) {
+    set<int> cidadesCobertas;
+    for (const auto& rota : combinacao) {
+        for (int cidade : rota) {
+            cidadesCobertas.insert(cidade);
         }
     }
-
-    rotaHeuristica.push_back(0);
-
-    return rotaHeuristica;
-
-    // return rota;
+    return cidadesCobertas.size() == locais.size();
 }
 
+void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, 
+                               const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo) {
+    stack<pair<int, int>> pilha;
+    pilha.push(make_pair(index, 0));
+
+    while (!pilha.empty()) {
+        pair<int, int> topo = pilha.top();
+        pilha.pop();
+
+        int i = topo.first;
+        int opcao = topo.second;
+
+        if (opcao == 0) {
+            if (cobreTodasCidades(combinacaoAtual, locais)) {
+                int custoTotal = 0;
+                for (const auto& rota : combinacaoAtual) {
+                    custoTotal += grafo.calcularCustoRota(rota);
+                }
+                if (custoTotal < melhorCusto) {
+                    melhorCusto = custoTotal;
+                    melhorCombinacao = combinacaoAtual;
+                }
+                continue;
+            }
+        }
+
+        if (opcao == 0 && i < rotas.size()) {
+            combinacaoAtual.push_back(rotas[i]);
+            pilha.push(make_pair(i, 1));
+            pilha.push(make_pair(i + 1, 0));
+        } else if (opcao == 1) {
+            combinacaoAtual.pop_back();
+            pilha.push(make_pair(i + 1, 0));
+        }
+    }
+}
