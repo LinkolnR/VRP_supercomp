@@ -14,12 +14,12 @@
 using namespace std;
 
 class Grafo {
-    unordered_map<int, vector<pair<int, int>>> adjacencias;
+    unordered_map<int, vector<pair<int, int>>> grafo_classe;
 
 public:
     // Função para adicionar uma aresta ao grafo
     void adicionarAresta(int origem, int destino, int peso) {
-        adjacencias[origem].push_back(make_pair(destino, peso));
+        grafo_classe[origem].push_back(make_pair(destino, peso));
     }
 
     // função para calcular custo de uma rota
@@ -33,7 +33,7 @@ public:
             int origem = rota_copia[i];
             int destino = rota_copia[i + 1];
 
-            for (const auto& aresta : adjacencias[origem]) {
+            for (const auto& aresta : grafo_classe[origem]) {
                 if (aresta.first == destino) {
                     custo += aresta.second;
                     break;
@@ -51,12 +51,12 @@ public:
             int destino = rota[i + 1];
 
             // Verifica se há uma aresta entre os vértices da rota
-            if (adjacencias.find(origem) == adjacencias.end()) {
+            if (grafo_classe.find(origem) == grafo_classe.end()) {
                 return false;
             }
 
             bool arestaEncontrada = false;
-            for (const auto& aresta : adjacencias[origem]) {
+            for (const auto& aresta : grafo_classe[origem]) {
                 if (aresta.first == destino) {
                     arestaEncontrada = true;
                     break;
@@ -75,8 +75,6 @@ public:
 void LerGrafo(string file, map<int,int> &demanda, vector<tuple<int, int , int>> &arestas, vector<int> &locais, Grafo &grafo);
 vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,int> demanda, int capacidade, Grafo &grafo);
 bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade);
-void ResolverVRPComDemanda(vector<int> locais, map<int,int> demanda, int capacidade);
-int CalcularCusto(vector<int> rota);
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo);
 
 
@@ -104,18 +102,18 @@ int main(int argc, char* argv[]){
     vector<vector<int>> combinacaoAtual;
     vector<vector<int>> melhorCombinacao;
 
-    // Paralelizando a busca pela melhor combinação
+    // Paralelizando a busca pela melhor combinação, começando por adicionar o bloco de pragma omp parallel, para que as threads tenham acesso ao trecho de código
     #pragma omp parallel
     {
         vector<vector<int>> melhorCombinacaoLocal;
-        int melhorCustoLocal = INT_MAX;
-
+        int melhorCustoLocal = INT_MAX; 
+        // Aqui para paralelizar o loop for, adicionamos o bloco de pragma omp for, com a cláusula schedule(dynamic) pois o tempo de verificaçõa das rotas pode ser bem diferente
         #pragma omp for schedule(dynamic)
         for (int i = 0; i < rotas.size(); i++) {
             vector<vector<int>> combinacaoAtualLocal;
             encontrarMelhorCombinacao(rotas, combinacaoAtualLocal, i, locais, melhorCustoLocal, melhorCombinacaoLocal, grafo);
         }
-
+        // Adicionamos a região critica para garantir que apenas uma thread tenha acesso ao recurso compartilhado
         #pragma omp critical
         {
             if (melhorCustoLocal < melhorCusto) {
@@ -215,7 +213,7 @@ bool cobreTodasCidades(const vector<vector<int>>& combinacao, const vector<int>&
     }
     return cidadesCobertas.size() == locais.size();
 }
-
+// Trocando a implementação por uma implementação não recursiva para que cosnigamos aplicar a paralelização de melhor forma
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, 
                                const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo) {
     stack<pair<int, int>> pilha;

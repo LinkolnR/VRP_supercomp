@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <vector>
 #include <fstream>
@@ -8,8 +9,8 @@
 #include <set>
 #include <chrono>
 #include <stack>
-#include <mpi.h>
 #include <unordered_map>
+#include <omp.h>
 
 using namespace std;
 
@@ -17,11 +18,14 @@ class Grafo {
     unordered_map<int, vector<pair<int, int>>> grafo_classe;
 
 public:
+    // Função para adicionar uma aresta ao grafo
     void adicionarAresta(int origem, int destino, int peso) {
         grafo_classe[origem].push_back(make_pair(destino, peso));
     }
 
+    // função para calcular custo de uma rota
     int calcularCustoRota(const vector<int>& rota) {
+        // copia de rota
         vector<int> rota_copia = rota;
         rota_copia.push_back(0);
         rota_copia.insert(rota_copia.begin(), 0);
@@ -37,14 +41,17 @@ public:
                 }
             }
         }
+
         return custo;
     }
 
+    // Função para verificar se uma rota é válida
     bool verificarRotaValida(const vector<int>& rota) {
         for (int i = 0; i < rota.size() - 1; i++) {
             int origem = rota[i];
             int destino = rota[i + 1];
 
+            // Verifica se há uma aresta entre os vértices da rota
             if (grafo_classe.find(origem) == grafo_classe.end()) {
                 return false;
             }
@@ -56,102 +63,106 @@ public:
                     break;
                 }
             }
+
             if (!arestaEncontrada) {
                 return false;
             }
         }
+
         return true;
     }
 };
 
-void LerGrafo(string file, map<int, int>& demanda, vector<tuple<int, int, int>>& arestas, vector<int>& locais, Grafo& grafo);
-vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int, int> demanda, int capacidade, Grafo& grafo);
-bool VerificarCapacidade(vector<int> rota, map<int, int> demanda, int capacidade);
-void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo, int rank, int size);
+void LerGrafo(string file, map<int,int> &demanda, vector<tuple<int, int , int>> &arestas, vector<int> &locais, Grafo &grafo);
+vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,int> demanda, int capacidade, Grafo &grafo);
+bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade);
+void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo);
 
-int main(int argc, char* argv[]) {
-    // agora utilizando MPI precisamos inicializar o ambiente
-    MPI_Init(&argc, &argv);
-    int rank, size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    //
+
+int main(int argc, char* argv[]){
     auto start = std::chrono::high_resolution_clock::now();
     if (argc < 2) {
-        if (rank == 0) {
-            cout << "Usage: " << argv[0] << " <file>" << endl;
-        }
-        MPI_Finalize();
+        cout << "Usage: " << argv[0] << " <file>" << endl;
         return 1;
     }
     string file = argv[1];
     int capacidade = 10;
-    Grafo grafo;
-    map<int, int> demanda;
-    vector<tuple<int, int, int>> arestas;
+    Grafo grafo;    
+    map<int,int> demanda;
+    vector<tuple<int, int , int>> arestas;
     vector<int> locais;
-
+    // Realiza a leitura do grafo
     LerGrafo(file, demanda, arestas, locais, grafo);
 
-    if (rank == 0) {
-        cout << "Local: " << locais.size() << endl;
-    }
-
+    cout << "Local: "  << locais.size() << endl;
     vector<vector<int>> rotas = GerarTodasAsCombinacoes(locais, demanda, capacidade, grafo);
+    cout << "Rotas: " << rotas.size() << endl;
 
-    if (rank == 0) {
-        cout << "Rotas: " << rotas.size() << endl;
-    }
-
-    int melhorCustoGlobal = INT_MAX;
-    vector<vector<int>> melhorCombinacaoGlobal;
+    int melhorCusto = INT_MAX;
 
     vector<vector<int>> combinacaoAtual;
-    vector<vector<int>> melhorCombinacaoLocal;
-    int melhorCustoLocal = INT_MAX;
+    vector<vector<int>> melhorCombinacao;
 
-    encontrarMelhorCombinacao(rotas, combinacaoAtual, 0, locais, melhorCustoLocal, melhorCombinacaoLocal, grafo, rank, size);
+    // Paralelizando a busca pela melhor combinação
+    #pragma omp parallel
+    {
+        vector<vector<int>> melhorCombinacaoLocal;
+        int melhorCustoLocal = INT_MAX;
 
-    MPI_Reduce(&melhorCustoLocal, &melhorCustoGlobal, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
-
-    if (rank == 0) {
-        cout << "Melhor combinação de rotas:" << endl;
-        for (const auto& rota : melhorCombinacaoGlobal) {
-            cout << "{ ";
-            for (int cidade : rota) {
-                cout << cidade << " ";
-            }
-            cout << "} com custo: " << grafo.calcularCustoRota(rota) << endl;
+        #pragma omp for schedule(dynamic)
+        for (int i = 0; i < rotas.size(); i++) {
+            vector<vector<int>> combinacaoAtualLocal;
+            encontrarMelhorCombinacao(rotas, combinacaoAtualLocal, i, locais, melhorCustoLocal, melhorCombinacaoLocal, grafo);
         }
-        cout << "Menor custo: " << melhorCustoGlobal << endl;
 
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end - start;
-        std::cout << "Tempo de execução: " << duration.count() << " segundos" << std::endl;
+        #pragma omp critical
+        {
+            if (melhorCustoLocal < melhorCusto) {
+                melhorCusto = melhorCustoLocal;
+                melhorCombinacao = melhorCombinacaoLocal;
+            }
+        }
     }
 
-    MPI_Finalize();
+    // Imprimir o resultado
+    cout << "Melhor combinação de rotas:" << endl;
+    for (const auto& rota : melhorCombinacao) {
+        cout << "{ ";
+        for (int cidade : rota) {
+            cout << cidade << " ";
+        }
+        cout << "} com custo: " << grafo.calcularCustoRota(rota) << endl;
+    }
+    cout << "Menor custo: " << melhorCusto << endl;
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Tempo de execução: " << duration.count() << " segundos" << std::endl;
     return 0;
 }
 
-void LerGrafo(string file, map<int, int>& demanda, vector<tuple<int, int, int>>& arestas, vector<int>& locais, Grafo& grafo) {
+void LerGrafo(string file, map<int,int> &demanda, vector<tuple<int, int , int>> &arestas, vector<int> &locais, Grafo &grafo) {
     ifstream arquivo;
     arquivo.open(file);
     if (arquivo.is_open()) {
-        int N;
+        int N; // número de locais a serem visitados
         arquivo >> N;
         N -= 1;
         for (int i = 1; i <= N; i++) {
             locais.push_back(i);
         }
+        // Populando a lista de demandas dos locais
         for (int i = 0; i < N; i++) {
             int id_no, demanda_no;
             arquivo >> id_no;
             arquivo >> demanda_no;
             demanda[id_no] = demanda_no;
         }
-        int K;
-        arquivo >> K;
+        // número de aresyas
+        int K; // Declare a variável K antes de utilizá-la
+
+        arquivo >> K; // Leia o número de arestas do arquivo
+
         for (int i = 0; i < K; i++) {
             int id_no1, id_no2, custo;
             arquivo >> id_no1;
@@ -164,15 +175,16 @@ void LerGrafo(string file, map<int, int>& demanda, vector<tuple<int, int, int>>&
     arquivo.close();
 }
 
-bool VerificarCapacidade(vector<int> rota, map<int, int> demanda, int capacidade) {
+bool VerificarCapacidade(vector<int> rota, map<int,int> demanda, int capacidade){
     int demanda_total = 0;
-    for (auto& local : rota) {
+    for (auto& local : rota){
         demanda_total += demanda[local];
     }
     return demanda_total <= capacidade;
 }
 
-vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int, int> demanda, int capacidade, Grafo& grafo) {
+// Função para gerar todas as combinações possíveis
+vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int,int> demanda, int capacidade,Grafo &grafo) {
     vector<vector<int>> rotas;
     int n = locais.size();
     for (int i = 1; i < (1 << n); i++) {
@@ -182,8 +194,8 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int, i
                 rota.push_back(locais[j]);
             }
         }
-        if (VerificarCapacidade(rota, demanda, capacidade)) {
-            if (grafo.verificarRotaValida(rota)) {
+        if (VerificarCapacidade(rota, demanda, capacidade)){
+            if (grafo.verificarRotaValida(rota)){
                 rotas.push_back(rota);
             }
         }
@@ -191,6 +203,8 @@ vector<vector<int>> GerarTodasAsCombinacoes(const vector<int> locais, map<int, i
     return rotas;
 }
 
+
+// Função para verificar se uma combinação de rotas cobre todas as cidades
 bool cobreTodasCidades(const vector<vector<int>>& combinacao, const vector<int>& locais) {
     set<int> cidadesCobertas;
     for (const auto& rota : combinacao) {
@@ -202,13 +216,7 @@ bool cobreTodasCidades(const vector<vector<int>>& combinacao, const vector<int>&
 }
 
 void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<int>>& combinacaoAtual, int index, 
-                               const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, 
-                               Grafo& grafo, int rank, int size) {
-    int n = rotas.size();
-    int chunkSize = n / size;
-    int start = rank * chunkSize;
-    int end = (rank == size - 1) ? n : start + chunkSize;
-
+                               const vector<int>& locais, int& melhorCusto, vector<vector<int>>& melhorCombinacao, Grafo& grafo) {
     stack<pair<int, int>> pilha;
     pilha.push(make_pair(index, 0));
 
@@ -233,7 +241,7 @@ void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<i
             }
         }
 
-        if (opcao == 0 && i < end) {
+        if (opcao == 0 && i < rotas.size()) {
             combinacaoAtual.push_back(rotas[i]);
             pilha.push(make_pair(i, 1));
             pilha.push(make_pair(i + 1, 0));
@@ -243,3 +251,4 @@ void encontrarMelhorCombinacao(const vector<vector<int>>& rotas, vector<vector<i
         }
     }
 }
+
